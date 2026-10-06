@@ -1,0 +1,140 @@
+name: Build UNG Source Archive
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Build source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p UNG_SOURCE
+          : > UNG_SOURCE/REPOSITORY_MANIFEST.tsv
+          : > UNG_SOURCE/CLONE_FAILURES.txt
+          repos=(
+            "uganda-grid-api-clean"
+            "uga-backup-service"
+            "Data-relay-server-"
+            "UGAFORCE-HR"
+            "UNG-IAM"
+            "UNG-MDM"
+            "-UNG-MDM"
+            "-UNG-EAM"
+            "-UNG-FIN"
+            "-UNG-DATA"
+            "-UNG-PROCURE"
+            "-UNG-DOCS"
+            "-UNG-COMMS"
+            "UNG-NEMESIS"
+            "-UNG-SENTINEL"
+            "-WMS400Vector"
+            "-UNG-INFRA-25"
+            "-UNG-UAS"
+            "UNG-NOC"
+            "UNG-CORE"
+            "UNG-ATLAS"
+            "UNG-AEGIS"
+            "UNG-NEXUS"
+            "UNG-APOLLO"
+            "GUARDIAN-CORE"
+            "UNG-SENSOR-FUSION"
+            "UNG-TAX"
+            "UNG-INTERNAL-WIFI"
+            "UNG-HORUS"
+            "UNG-HERMES"
+            "UNG-ORION"
+            "UNG-CONSTELLATION"
+            "UNG-QUASAR"
+            "UNG-ARGUS"
+            "Remote-Sensor-Hub"
+            "UNG-VAULT"
+            "UNG-ZIPPER"
+            "UGASHIP"
+            "UNG-ZEUS"
+            "UNG-MERCURY"
+            "UNG-APEX"
+            "UNG-ORACLE"
+            "UNG-EDGE"
+            "UNG-INTERNALNET"
+            "UNG-WAVE-"
+            "UNG-DRACO"
+            "UNG-PRESIDENT"
+            "UNG-HELIOS"
+            "UNG-OLYMPUS"
+            "UNG-TALOS"
+            "UNG-KINSHIP"
+            "UNG-GOVERNMENT-REGISTER-"
+            "UNG-CERBERUS"
+            "UNG-CAD"
+            "UNG-NEPTUNE-"
+            "UNG-GOVBRIDGE"
+            "UNG-KINGSHIP"
+            "UNG-LAGRANGE"
+            "UNG-NAVSTAR"
+          )
+          for repo in "${repos[@]}"; do
+            echo "Cloning $repo"
+            if git clone --depth 1 --quiet "https://github.com/samtumwesigye2-create/${repo}.git" "UNG_SOURCE/${repo}"; then
+              sha=$(git -C "UNG_SOURCE/${repo}" rev-parse HEAD)
+              printf '%s\t%s\n' "$repo" "$sha" >> UNG_SOURCE/REPOSITORY_MANIFEST.tsv
+              rm -rf "UNG_SOURCE/${repo}/.git"
+            else
+              echo "$repo" >> UNG_SOURCE/CLONE_FAILURES.txt
+              rm -rf "UNG_SOURCE/${repo}"
+            fi
+          done
+
+          cat > UNG_SOURCE/README.txt <<'EOF'
+          UNG COMPLETE SOURCE ARCHIVE
+          Generated from current default branches of the public repositories in the samtumwesigye2-create GitHub account.
+          REPOSITORY_MANIFEST.tsv records the exact commit captured for each repository.
+          CLONE_FAILURES.txt lists repositories that could not be downloaded.
+          ALL_UNG_SOURCE_CODE.txt concatenates all detected text/source files into one searchable file with repository/path headers.
+          Repository folders preserve the source tree, excluding .git history.
+          EOF
+
+          : > UNG_SOURCE/ALL_UNG_SOURCE_CODE.txt
+          while IFS= read -r -d '' f; do
+            case "$f" in
+              */ALL_UNG_SOURCE_CODE.txt|*/REPOSITORY_MANIFEST.tsv|*/CLONE_FAILURES.txt) continue ;;
+            esac
+            if grep -Iq . "$f" 2>/dev/null || [ ! -s "$f" ]; then
+              printf '\n\n================================================================================\nFILE: %s\n================================================================================\n' "$f" >> UNG_SOURCE/ALL_UNG_SOURCE_CODE.txt
+              cat "$f" >> UNG_SOURCE/ALL_UNG_SOURCE_CODE.txt || true
+              printf '\n' >> UNG_SOURCE/ALL_UNG_SOURCE_CODE.txt
+            fi
+          done < <(find UNG_SOURCE -type f -print0 | sort -z)
+
+          python3 - <<'PY'
+          import os, zipfile
+          root='UNG_SOURCE'
+          out='UNG_ALL_SOURCE_CODE_2026-10-05.zip'
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED,compresslevel=9) as z:
+              for base, dirs, files in os.walk(root):
+                  for name in files:
+                      p=os.path.join(base,name)
+                      z.write(p,p)
+          print(out, os.path.getsize(out))
+          PY
+
+      - name: Upload archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: UNG_ALL_SOURCE_CODE_2026-10-05
+          path: |
+            UNG_ALL_SOURCE_CODE_2026-10-05.zip
+            UNG_SOURCE/ALL_UNG_SOURCE_CODE.txt
+            UNG_SOURCE/REPOSITORY_MANIFEST.tsv
+            UNG_SOURCE/CLONE_FAILURES.txt
+          if-no-files-found: error
+          retention-days: 7
